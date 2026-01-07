@@ -1,6 +1,7 @@
 import 'dart:developer';
 import 'dart:io';
 
+import 'package:alarm_app/core/constants/app_constants.dart';
 import 'package:alarm_app/core/service/tts_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -101,6 +102,7 @@ class NotificationService {
     required String body,
     required DateTime time, // 사용자가 설정한 시간 (날짜는 무시하고 시/분만 사용)
     required List<int> activeDays, // [1, 2, 3...] (1=월요일)
+    String? soundName, // 알림음 파일명
   }) async {
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
 
@@ -121,7 +123,7 @@ class NotificationService {
         scheduledDate = scheduledDate.add(const Duration(days: 1));
       }
 
-      await _scheduleOneShot(alarmId, title, body, scheduledDate);
+      await _scheduleOneShot(alarmId, title, body, scheduledDate, soundName);
     }
     // 2. 반복 요일이 있는 경우 (매주 반복)
     else {
@@ -133,7 +135,13 @@ class NotificationService {
         // 이렇게 해야 요일별로 개별 취소/수정이 가능함
         final int notificationId = alarmId * 10 + day;
 
-        await _scheduleRepeated(notificationId, title, body, scheduledDate);
+        await _scheduleRepeated(
+          notificationId,
+          title,
+          body,
+          scheduledDate,
+          soundName,
+        );
       }
     }
   }
@@ -169,13 +177,14 @@ class NotificationService {
     String title,
     String body,
     tz.TZDateTime scheduledDate,
+    String? soundName,
   ) async {
     await _plugin.zonedSchedule(
       id,
       title,
       body,
       scheduledDate,
-      _notificationDetails(), // 공통 Details 분리
+      _notificationDetails(soundName: soundName), // 공통 Details 분리
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: body,
     );
@@ -187,13 +196,14 @@ class NotificationService {
     String title,
     String body,
     tz.TZDateTime scheduledDate,
+    String? soundName,
   ) async {
     await _plugin.zonedSchedule(
       id,
       title,
       body,
       scheduledDate,
-      _notificationDetails(),
+      _notificationDetails(soundName: soundName),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       // ★ 핵심: 요일과 시간이 같을 때마다 반복
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
@@ -202,21 +212,32 @@ class NotificationService {
   }
 
   // 공통 Notification Details
-  NotificationDetails _notificationDetails() {
-    return const NotificationDetails(
-      android: AndroidNotificationDetails(
-        'alarm_channel_id',
-        '기상/업무 알람',
-        channelDescription: '알람 기능을 위한 채널입니다.',
-        importance: Importance.max,
-        priority: Priority.high,
-        // sound: RawResourceAndroidNotificationSound('launch_comment_bgm'),
-      ),
-      iOS: DarwinNotificationDetails(
-        // sound: 'launch_comment_bgm.wav',
-        presentSound: true,
-      ),
-    );
+  NotificationDetails _notificationDetails({String? soundName}) {
+    if (soundName != null && soundName.isNotEmpty) {
+      String iosSound = soundName.contains('.') ? soundName : '$soundName.wav';
+      return NotificationDetails(
+        android: AndroidNotificationDetails(
+          AppConstants.channelCustomId,
+          AppConstants.channelCustomName,
+          channelDescription: AppConstants.channelCustomDesc,
+          importance: Importance.max,
+          priority: Priority.high,
+          sound: RawResourceAndroidNotificationSound(soundName),
+        ),
+        iOS: DarwinNotificationDetails(sound: iosSound, presentSound: true),
+      );
+    } else {
+      return const NotificationDetails(
+        android: AndroidNotificationDetails(
+          AppConstants.channelDefaultId,
+          AppConstants.channelDefaultName,
+          channelDescription: AppConstants.channelDefaultDesc,
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(presentSound: true),
+      );
+    }
   }
 
   // 알람 취소 (반복 알람까지 고려해서 모두 취소)

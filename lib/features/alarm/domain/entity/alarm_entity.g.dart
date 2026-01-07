@@ -21,13 +21,16 @@ class AlarmEntityAdapter extends TypeAdapter<AlarmEntity> {
       time: fields[1] as DateTime,
       isEnabled: fields[2] as bool,
       ttsMessage: fields[3] as String,
+      activeDays: (fields[4] as List).cast<int>(),
+      title: fields[5] as String,
+      soundName: fields[6] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, AlarmEntity obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -35,7 +38,13 @@ class AlarmEntityAdapter extends TypeAdapter<AlarmEntity> {
       ..writeByte(2)
       ..write(obj.isEnabled)
       ..writeByte(3)
-      ..write(obj.ttsMessage);
+      ..write(obj.ttsMessage)
+      ..writeByte(4)
+      ..write(obj.activeDays)
+      ..writeByte(5)
+      ..write(obj.title)
+      ..writeByte(6)
+      ..write(obj.soundName);
   }
 
   @override

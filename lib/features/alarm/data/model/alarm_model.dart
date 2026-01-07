@@ -4,6 +4,8 @@ class AlarmModel {
   final bool isEnabled;
   final String? ttsMessage;
   final List<int>? activeDays;
+  final String title;
+  final String? soundName;
 
   AlarmModel({
     required this.id,
@@ -11,6 +13,8 @@ class AlarmModel {
     this.isEnabled = true,
     this.ttsMessage,
     this.activeDays,
+    this.title = "알람",
+    this.soundName,
   });
 
   AlarmModel copyWith({
@@ -19,6 +23,8 @@ class AlarmModel {
     bool? isEnabled,
     String? ttsMessage,
     List<int>? activeDays,
+    String? title,
+    String? soundName,
   }) {
     return AlarmModel(
       id: id ?? this.id,
@@ -26,6 +32,8 @@ class AlarmModel {
       isEnabled: isEnabled ?? this.isEnabled,
       ttsMessage: ttsMessage ?? this.ttsMessage,
       activeDays: activeDays ?? this.activeDays,
+      title: title ?? this.title,
+      soundName: soundName ?? this.soundName,
     );
   }
 }

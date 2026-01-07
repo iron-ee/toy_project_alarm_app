@@ -1,3 +1,4 @@
+import 'package:alarm_app/core/constants/app_constants.dart';
 import 'package:alarm_app/features/alarm/domain/entity/alarm_entity.dart';
 import 'package:hive_ce/hive_ce.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -10,13 +11,11 @@ AlarmLocalDataSource alarmLocalDataSource(Ref ref) {
 }
 
 class AlarmLocalDataSource {
-  // Box를 여는 로직
   Future<Box<AlarmEntity>> _getBox() async {
-    // Hive 대신 hive_ce도 Hive 클래스명을 그대로 사용하므로 코드 변경 최소화됨
-    if (Hive.isBoxOpen(kAlarmBoxName)) {
-      return Hive.box<AlarmEntity>(kAlarmBoxName);
+    if (Hive.isBoxOpen(AppConstants.alarmBoxName)) {
+      return Hive.box<AlarmEntity>(AppConstants.alarmBoxName);
     } else {
-      return await Hive.openBox<AlarmEntity>(kAlarmBoxName);
+      return await Hive.openBox<AlarmEntity>(AppConstants.alarmBoxName);
     }
   }
 

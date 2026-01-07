@@ -1,3 +1,4 @@
+import 'package:alarm_app/core/constants/app_constants.dart';
 import 'package:alarm_app/core/service/notification_service.dart';
 import 'package:alarm_app/features/alarm/domain/entity/alarm_entity.dart';
 import 'package:alarm_app/features/alarm/presentation/view/alarm_list_view.dart';
@@ -15,7 +16,7 @@ void main() async {
   Hive.registerAdapter(AlarmEntityAdapter());
 
   // 3) Box 열기
-  await Hive.openBox<AlarmEntity>(kAlarmBoxName);
+  await Hive.openBox<AlarmEntity>(AppConstants.alarmBoxName);
 
   // ProviderContainer를 직접 생성해서 초기화 로직 수행
   final container = ProviderContainer();
@@ -35,7 +36,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Alarm App',
+      title: '알림딩동',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
