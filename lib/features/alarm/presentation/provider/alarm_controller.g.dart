@@ -33,7 +33,7 @@ final class AlarmControllerProvider
   AlarmController create() => AlarmController();
 }
 
-String _$alarmControllerHash() => r'843fb507440fc8a1866fddc41f12d6987568ed0a';
+String _$alarmControllerHash() => r'a76b4400c4092e95d8852ade02c68fd20558d04f';
 
 abstract class _$AlarmController extends $AsyncNotifier<List<AlarmModel>> {
   FutureOr<List<AlarmModel>> build();

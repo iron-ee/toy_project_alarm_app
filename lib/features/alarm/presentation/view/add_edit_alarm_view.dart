@@ -27,8 +27,9 @@ class _AddEditAlarmScreenState extends ConsumerState<AddEditAlarmScreen> {
   // 실제 파일: android/app/src/main/res/raw/launch_comment_bgm.wav
   final Map<String, String> _soundOptions = {
     '기본음': '', // 빈 문자열이나 null로 처리
-    '점심 BGM': AppConstants.soundLaunchBgm,
-    // '경쾌한 알람': 'bright_alarm', // 추가 파일이 있다면 여기에
+    '점심시간 안내': AppConstants.soundLaunch,
+    '퇴근시간 안내': AppConstants.soundWorkExit,
+    '청소시간 안내': AppConstants.soundCleanRoom,
   };
 
   @override

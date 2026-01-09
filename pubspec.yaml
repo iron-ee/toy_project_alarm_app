@@ -9,6 +9,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  intl: ^0.20.2
 
   # river pod
   flutter_riverpod: ^3.1.0
@@ -34,6 +35,15 @@ dependencies:
   # tts
   flutter_tts: ^4.2.3
 
+  # alarm
+  alarm: ^5.1.5
+
+  # permission
+  permission_handler: ^12.0.1
+
+  # vibration
+  vibration: ^3.1.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -50,6 +60,9 @@ dev_dependencies:
   flutter_native_splash: ^2.4.7
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/sounds/
 
 flutter_icons:
   android: true

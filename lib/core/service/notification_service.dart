@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'dart:io';
+import 'dart:typed_data'; // Int32List
 
 import 'package:alarm_app/core/constants/app_constants.dart';
 import 'package:alarm_app/core/service/tts_service.dart';
@@ -23,33 +24,26 @@ class NotificationService {
 
   NotificationService(this._ref);
 
-  // 1. 초기화 (앱 시작 시 호출)
+  // 1. 초기화
   Future<void> init() async {
-    // Timezone DB 초기화
     tz.initializeTimeZones();
 
-    // 기기의 현재 타임존 가져오기
     try {
       final TimezoneInfo timezoneInfo =
           await FlutterTimezone.getLocalTimezone();
       final String timeZoneName = timezoneInfo.identifier;
-
-      log("현재 기기 타임존: $timeZoneName");
       tz.setLocalLocation(tz.getLocation(timeZoneName));
     } catch (e) {
       log("타임존 설정 실패: $e");
       tz.setLocalLocation(tz.getLocation('UTC'));
     }
 
-    // Android 설정: 아이콘 파일명 (android/app/src/main/res/drawable/app_icon.png 필요)
-    // 없으면 기본 'mipmap/ic_launcher' 사용 가능하지만, 투명 배경 아이콘 권장
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // iOS 설정
     const DarwinInitializationSettings iosSettings =
         DarwinInitializationSettings(
-          requestAlertPermission: false, // 나중에 명시적으로 요청함
+          requestAlertPermission: false,
           requestBadgePermission: false,
           requestSoundPermission: false,
         );
@@ -65,26 +59,58 @@ class NotificationService {
         log("알림 클릭됨: ${details.payload}");
         final payload = details.payload;
         if (payload != null && payload.isNotEmpty) {
-          // TTS 서비스 호출
           _ref.read(ttsServiceProvider).speak(payload);
         }
       },
     );
+
+    // [수정] 여기서 미리 채널을 만들지 않습니다.
+    // 알람 예약 시점에 동적으로 만듭니다.
   }
 
-  // 2. 권한 요청 (설정 화면이나 앱 최초 실행 시 호출)
+  // [추가] 소리 파일명에 따라 전용 채널을 생성하는 함수
+  Future<String> _createChannelForSound(String? soundName) async {
+    // 1. 소리가 없으면 기본 채널 ID 반환
+    if (soundName == null || soundName.isEmpty) {
+      return AppConstants.channelDefaultId;
+    }
+
+    // 2. 소리 파일명을 포함한 고유한 채널 ID 생성
+    // 예: alarm_custom_launch_notice_1
+    final String dynamicChannelId = 'alarm_custom_$soundName';
+    final String dynamicChannelName = '알람 ($soundName)';
+
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
+    // 3. 해당 ID로 채널 생성 (이미 있으면 업데이트됨)
+    final AndroidNotificationChannel channel = AndroidNotificationChannel(
+      dynamicChannelId,
+      dynamicChannelName,
+      description: '사용자 지정 알림음입니다.',
+      importance: Importance.max, // Max 중요도
+      playSound: true,
+      sound: RawResourceAndroidNotificationSound(soundName),
+      enableVibration: true,
+      // [핵심] 알람 스트림 강제 지정
+      audioAttributesUsage: AudioAttributesUsage.alarm,
+    );
+
+    await androidPlugin?.createNotificationChannel(channel);
+
+    return dynamicChannelId; // 생성된 ID 반환
+  }
+
   Future<void> requestPermission() async {
+    // ... (기존 코드 동일) ...
     if (Platform.isAndroid) {
       final androidImplementation = _plugin
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >();
-
-      // 1. (기존) 알림 표시 권한 (Android 13+ POST_NOTIFICATIONS)
       await androidImplementation?.requestNotificationsPermission();
-
-      // 2. [추가] 정확한 알람 스케줄링 권한 요청 (Android 12+)
-      // 이 함수를 호출하면, 권한이 없을 경우 시스템 설정 화면으로 이동시킬 수 있습니다.
       await androidImplementation?.requestExactAlarmsPermission();
     } else if (Platform.isIOS) {
       await _plugin
@@ -95,20 +121,17 @@ class NotificationService {
     }
   }
 
-  // 3. 알람 스케줄링 (핵심 기능)
   Future<void> scheduleAlarm({
-    required int alarmId, // DB에 저장된 알람 ID
+    required int alarmId,
     required String title,
     required String body,
-    required DateTime time, // 사용자가 설정한 시간 (날짜는 무시하고 시/분만 사용)
-    required List<int> activeDays, // [1, 2, 3...] (1=월요일)
-    String? soundName, // 알림음 파일명
+    required DateTime time,
+    required List<int> activeDays,
+    String? soundName,
   }) async {
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
 
-    // 1. 반복 요일이 없는 경우 (1회성 알람)
     if (activeDays.isEmpty) {
-      // 설정된 시/분으로 오늘 날짜 생성
       tz.TZDateTime scheduledDate = tz.TZDateTime(
         tz.local,
         now.year,
@@ -117,24 +140,14 @@ class NotificationService {
         time.hour,
         time.minute,
       );
-
-      // 만약 이미 지난 시간이라면 내일로 설정
       if (scheduledDate.isBefore(now)) {
         scheduledDate = scheduledDate.add(const Duration(days: 1));
       }
-
       await _scheduleOneShot(alarmId, title, body, scheduledDate, soundName);
-    }
-    // 2. 반복 요일이 있는 경우 (매주 반복)
-    else {
+    } else {
       for (final day in activeDays) {
-        // 해당 요일의 다음 발생 시간 계산
         tz.TZDateTime scheduledDate = _nextInstanceOfDay(day, time);
-
-        // ID 생성 규칙: 알람ID * 10 + 요일인덱스 (예: ID 5, 월요일(1) -> 51)
-        // 이렇게 해야 요일별로 개별 취소/수정이 가능함
         final int notificationId = alarmId * 10 + day;
-
         await _scheduleRepeated(
           notificationId,
           title,
@@ -146,7 +159,7 @@ class NotificationService {
     }
   }
 
-  // 내부 함수: 다음 요일 계산 로직
+  // ... (날짜 계산 함수들은 기존과 동일, 생략) ...
   tz.TZDateTime _nextInstanceOfDay(int dayOfWeek, DateTime time) {
     tz.TZDateTime scheduledDate = _nextInstanceOfTime(time);
     while (scheduledDate.weekday != dayOfWeek) {
@@ -171,7 +184,6 @@ class NotificationService {
     return scheduledDate;
   }
 
-  // 내부 함수: 1회성 알람 등록
   Future<void> _scheduleOneShot(
     int id,
     String title,
@@ -179,18 +191,20 @@ class NotificationService {
     tz.TZDateTime scheduledDate,
     String? soundName,
   ) async {
+    // [수정] 예약 직전에 채널을 생성하고 ID를 받아옵니다.
+    final String channelId = await _createChannelForSound(soundName);
+
     await _plugin.zonedSchedule(
       id,
       title,
       body,
       scheduledDate,
-      _notificationDetails(soundName: soundName), // 공통 Details 분리
+      _notificationDetails(channelId, soundName), // ID 전달
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: body,
     );
   }
 
-  // 내부 함수: 반복 알람 등록 (matchDateTimeComponents 사용)
   Future<void> _scheduleRepeated(
     int id,
     String title,
@@ -198,53 +212,76 @@ class NotificationService {
     tz.TZDateTime scheduledDate,
     String? soundName,
   ) async {
+    // [수정] 예약 직전에 채널 생성
+    final String channelId = await _createChannelForSound(soundName);
+
     await _plugin.zonedSchedule(
       id,
       title,
       body,
       scheduledDate,
-      _notificationDetails(soundName: soundName),
+      _notificationDetails(channelId, soundName), // ID 전달
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      // ★ 핵심: 요일과 시간이 같을 때마다 반복
       matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       payload: body,
     );
   }
 
-  // 공통 Notification Details
-  NotificationDetails _notificationDetails({String? soundName}) {
+  // [수정] channelId를 인자로 받아서 그대로 사용
+  NotificationDetails _notificationDetails(
+    String channelId,
+    String? soundName,
+  ) {
     if (soundName != null && soundName.isNotEmpty) {
       String iosSound = soundName.contains('.') ? soundName : '$soundName.wav';
+
       return NotificationDetails(
         android: AndroidNotificationDetails(
-          AppConstants.channelCustomId,
-          AppConstants.channelCustomName,
-          channelDescription: AppConstants.channelCustomDesc,
+          channelId, // 동적으로 생성된 채널 ID 사용
+          '알람 ($soundName)', // 채널 이름 (사용자에게 보임)
+          channelDescription: '사용자 지정 알림음입니다.',
           importance: Importance.max,
           priority: Priority.high,
+
           sound: RawResourceAndroidNotificationSound(soundName),
+
+          // 알람 스트림 설정
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          category: AndroidNotificationCategory.alarm,
+
+          fullScreenIntent: true,
+          additionalFlags: Int32List.fromList(<int>[4]), // Insistent Flag
         ),
-        iOS: DarwinNotificationDetails(sound: iosSound, presentSound: true),
+        iOS: DarwinNotificationDetails(
+          sound: iosSound,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.critical,
+        ),
       );
     } else {
-      return const NotificationDetails(
+      // 기본음인 경우
+      return NotificationDetails(
         android: AndroidNotificationDetails(
-          AppConstants.channelDefaultId,
+          AppConstants.channelDefaultId, // 기본 채널 ID
           AppConstants.channelDefaultName,
           channelDescription: AppConstants.channelDefaultDesc,
           importance: Importance.max,
           priority: Priority.high,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          category: AndroidNotificationCategory.alarm,
+          fullScreenIntent: true,
+          additionalFlags: Int32List.fromList(<int>[4]),
         ),
-        iOS: DarwinNotificationDetails(presentSound: true),
+        iOS: DarwinNotificationDetails(
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.critical,
+        ),
       );
     }
   }
 
-  // 알람 취소 (반복 알람까지 고려해서 모두 취소)
   Future<void> cancelAlarm(int alarmId) async {
-    // 1회성 알람 취소 시도
     await _plugin.cancel(alarmId);
-    // 반복 알람(요일별 ID) 취소 시도 (1~7)
     for (int i = 1; i <= 7; i++) {
       await _plugin.cancel(alarmId * 10 + i);
     }
